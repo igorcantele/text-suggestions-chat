@@ -7,6 +7,7 @@ import {
 import { Server } from 'socket.io';
 import { CreateChatDto } from './create-chat.dto';
 import { SuggestionsService } from '../suggestions/suggestions.service';
+import { Logger } from '@nestjs/common';
 
 enum EventType {
   NewMessage = 'new_message',
@@ -16,6 +17,7 @@ enum EventType {
 export class ChatGateway {
   constructor(private readonly suggestionsService: SuggestionsService) {}
 
+  private readonly logger = new Logger(ChatGateway.name);
   @WebSocketServer()
   server: Server;
 
@@ -27,5 +29,6 @@ export class ChatGateway {
       msg: chat.msg,
       user: chat.user,
     });
+    this.logger.log('Message emitted');
   }
 }

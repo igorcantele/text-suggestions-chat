@@ -6,7 +6,7 @@ export class SuggestionsController {
   constructor(private readonly suggestionsService: SuggestionsService) {}
 
   @Get(':word')
-  async findSuggesionts(@Param('word') word: string) {
-    return this.suggestionsService.findSuggesionts(word);
+  async findSuggesions(@Param('word') word: string) {
+    return this.suggestionsService.findSuggesions(word);
   }
 }
