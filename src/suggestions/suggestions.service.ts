@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CreateSuggestionDto } from './dto/create-suggestion.dto';
 import {
   insertInCacheFn,
-  SuggestionNode,
+  SuggestionNodeElem,
   UPDATE_CHAIN_QUEUE,
 } from './suggestions';
 import { Queue } from 'bull';
@@ -16,7 +16,7 @@ const CACHE_SIZE = 5000;
 export class SuggestionsService {
   private readonly logger = new Logger(SuggestionsService.name);
   // LRU cache of the Markov chain
-  private readonly suggestionsAdjList = new LRUCache<SuggestionNode>(
+  private readonly suggestionsAdjList = new LRUCache<SuggestionNodeElem>(
     CACHE_SIZE,
     insertInCacheFn,
   );
@@ -59,9 +59,7 @@ export class SuggestionsService {
   async initCache() {
     const suggs = await this.getAll();
     for (const sugg of suggs) {
-      const newNode = {
-        suggs: [sugg],
-      };
+      const newNode: SuggestionNodeElem = Object.assign({}, sugg);
       this.suggestionsAdjList.put(sugg.key, newNode);
     }
   }
