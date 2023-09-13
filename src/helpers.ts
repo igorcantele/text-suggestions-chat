@@ -18,12 +18,12 @@ export class LRUCache<T> {
   private readonly right: Node<T> = new Node('', {} as T);
   private readonly cache: Record<string, Node<T>> = {};
 
-  private readonly appendStrategy: (prevVals: T[], newVal: T) => T[];
+  private readonly appendStrategy: (prevVals: T[], newVal: T) => [T[], number];
   private counter = 0;
 
   constructor(
     private readonly capacity: number,
-    appendStrategy?: (prevVals: T[], newVal: T) => T[],
+    appendStrategy?: (prevVals: T[], newVal: T) => [T[], number],
   ) {
     this.left.next = this.right;
     this.right.prev = this.left;
@@ -41,24 +41,31 @@ export class LRUCache<T> {
 
   put(key: string, value: T) {
     const prevVals = this.cache[key].val;
-    const node = new Node<T>(
-      key,
-      Array.isArray(prevVals) ? this.appendStrategy(prevVals, value) : value,
-    );
+    const [newValue, counterIncrement] = Array.isArray(prevVals)
+      ? this.appendStrategy(prevVals, value)
+      : [value, 1];
+
+    const node = new Node<T>(key, newValue);
     this.cache[key] = node;
+
+    this.counter = this.counter + counterIncrement;
 
     this.insertNode(this.cache[key]);
 
-    if (Object.keys(this.cache).length > this.capacity) {
+    if (this.counter > this.capacity) {
       const leastUsed = this.left.next;
       this.removeNode(leastUsed);
       delete this.cache[leastUsed.key];
     }
   }
 
-  private appendStrategyDefault(prevVals: T[], newVal: T): T[] {
-    if (!prevVals.includes(newVal)) prevVals.push(newVal);
-    return prevVals;
+  private appendStrategyDefault(prevVals: T[], newVal: T): [T[], number] {
+    let increment = 0;
+    if (!prevVals.includes(newVal)) {
+      prevVals.push(newVal);
+      increment++;
+    }
+    return [prevVals, increment];
   }
 
   private removeNode(node: Node<T>) {
