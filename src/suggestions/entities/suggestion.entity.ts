@@ -1,1 +1,5 @@
-export class Suggestion {}
+export class Suggestion {
+  freq: number;
+  sugg: string;
+  key: string;
+}
