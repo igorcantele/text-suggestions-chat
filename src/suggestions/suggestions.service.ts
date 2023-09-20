@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CreateSuggestionDto } from './dto/create-suggestion.dto';
 import {
   insertInCacheFn,
   SuggestionNodeElem,
@@ -10,12 +9,12 @@ import { InjectQueue } from '@nestjs/bull';
 import { LRUCache } from '../helpers';
 import { Suggestion } from './entities/suggestion.entity';
 
-const CACHE_SIZE = 5000;
+const CACHE_SIZE = 15000;
+const CONTEXT = 4;
 
 @Injectable()
 export class SuggestionsService {
   private readonly logger = new Logger(SuggestionsService.name);
-  // LRU cache of the Markov chain
   private readonly suggestionsAdjList = new LRUCache<SuggestionNodeElem>(
     CACHE_SIZE,
     insertInCacheFn,
@@ -30,18 +29,46 @@ export class SuggestionsService {
     return [];
   }
 
-  async insertSuggestion(createSuggestionDto: CreateSuggestionDto) {
-    return createSuggestionDto;
+  private async insertSuggestion(suggestion: Suggestion) {
+    return suggestion;
   }
 
-  async updateSuggestion(createSuggestionDto: CreateSuggestionDto) {
-    return createSuggestionDto;
-  }
-
-  async func(msg: string) {
+  /*
+   * This function saves data with a context and progressively reducing it.
+   * e.g.
+   * "Hello I need context"
+   * will save the following key-value suggestions:
+   *  Hello -> I
+   *  Hello I -> need
+   *  Hello I need -> context
+   */
+  async processMessage(msg: string) {
     const splittedMsg = msg.split(' ');
-    for (const word in splittedMsg) {
+    const suggestions: Suggestion[] = [];
+    for (let i = CONTEXT; i < splittedMsg.length - 1; i++) {
+      const context = [];
+
+      for (const [j, word] of splittedMsg.slice(i - CONTEXT, i).entries()) {
+        context.push(word);
+        const key = context.join(' ');
+
+        // Adding data to the cache
+        const newNode: SuggestionNodeElem = {
+          sugg: splittedMsg[i + j],
+          freq: 1,
+        };
+        this.suggestionsAdjList.put(key, newNode);
+
+        // Pushing data to be inserted in db
+        const newSuggestion = Object.assign(new Suggestion(), {
+          key,
+          ...newNode,
+        });
+        suggestions.push(newSuggestion);
+      }
     }
+
+    await Promise.all(suggestions.map((sugg) => this.insertSuggestion(sugg)));
   }
 
   async findSuggesions(word: string) {
@@ -54,13 +81,5 @@ export class SuggestionsService {
       user,
       msg,
     });
-  }
-
-  async initCache() {
-    const suggs = await this.getAll();
-    for (const sugg of suggs) {
-      const newNode: SuggestionNodeElem = Object.assign({}, sugg);
-      this.suggestionsAdjList.put(sugg.key, newNode);
-    }
   }
 }
