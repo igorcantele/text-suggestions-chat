@@ -8,6 +8,8 @@ import { Queue } from 'bull';
 import { InjectQueue } from '@nestjs/bull';
 import { LRUCache } from '../helpers';
 import { Suggestion } from './entities/suggestion.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 const CACHE_SIZE = 15000;
 const CONTEXT = 4;
@@ -22,15 +24,21 @@ export class SuggestionsService {
 
   constructor(
     @InjectQueue(UPDATE_CHAIN_QUEUE) private readonly updateChainQueue: Queue,
+    @InjectRepository(Suggestion) private repo: Repository<Suggestion>,
   ) {}
 
-  async getAll(): Promise<Suggestion[]> {
-    // query limit = CACHE_SIZE orderby probability DESC
-    return [];
-  }
-
   private async insertSuggestion(suggestion: Suggestion) {
-    return suggestion;
+    const existingSugg = await this.repo.findOneBy({
+      key: suggestion.key,
+      sugg: suggestion.sugg,
+    });
+    if (existingSugg)
+      suggestion = Object.assign(suggestion, {
+        ...existingSugg,
+        freq: existingSugg.freq + 1,
+      });
+    const res = await this.repo.save(suggestion);
+    return res;
   }
 
   /*

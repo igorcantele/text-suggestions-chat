@@ -3,6 +3,19 @@ export const binarySearch = <T, K>(
   arr: T[],
   compareFn: (a: T, b: T) => number,
 ): [number, boolean] => {
+  let left = 0;
+  let right = arr.length;
+
+  while (left <= right) {
+    const mid = Math.floor((right + left) / 2);
+    if (compareFn(arr[left], arr[mid]) > 0) {
+      right = mid - 1;
+    } else if (compareFn(arr[mid], arr[right]) > 0) {
+      left = mid + 1;
+    } else {
+      return [mid, true];
+    }
+  }
   return [-1, false];
 };
 

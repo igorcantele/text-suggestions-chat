@@ -1,5 +1,13 @@
+import { Column, Entity } from 'typeorm';
+
+@Entity()
 export class Suggestion {
-  freq: number;
-  sugg: string;
+  @Column()
   key: string;
+
+  @Column()
+  sugg: string;
+
+  @Column()
+  freq: number;
 }

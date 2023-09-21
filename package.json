@@ -27,11 +27,15 @@
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^8.0.0",
     "@nestjs/platform-socket.io": "^8.2.4",
+    "@nestjs/typeorm": "^10.0.0",
     "@nestjs/websockets": "^8.2.4",
     "bull": "^4.11.3",
+    "mysql2": "^3.6.1",
     "reflect-metadata": "^0.1.13",
     "rimraf": "^3.0.2",
-    "rxjs": "^7.2.0"
+    "rxjs": "^7.2.0",
+    "sqlite3": "^5.1.6",
+    "typeorm": "^0.3.17"
   },
   "devDependencies": {
     "@nestjs/cli": "^8.0.0",
