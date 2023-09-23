@@ -27,20 +27,6 @@ export class SuggestionsService {
     @InjectRepository(Suggestion) private repo: Repository<Suggestion>,
   ) {}
 
-  private async insertSuggestion(suggestion: Suggestion) {
-    const existingSugg = await this.repo.findOneBy({
-      key: suggestion.key,
-      sugg: suggestion.sugg,
-    });
-    if (existingSugg)
-      suggestion = Object.assign(suggestion, {
-        ...existingSugg,
-        freq: existingSugg.freq + 1,
-      });
-    const res = await this.repo.save(suggestion);
-    return res;
-  }
-
   /*
    * This function saves data with a context and progressively reducing it.
    * e.g.
@@ -51,18 +37,22 @@ export class SuggestionsService {
    *  Hello I need -> context
    */
   async processMessage(msg: string) {
+    this.logger.debug(`Processing message: ${msg}`);
     const splittedMsg = msg.split(' ');
     const suggestions: Suggestion[] = [];
-    for (let i = CONTEXT; i < splittedMsg.length - 1; i++) {
-      const context = [];
+    const contextLength = Math.min(CONTEXT, splittedMsg.length - 1);
 
-      for (const [j, word] of splittedMsg.slice(i - CONTEXT, i).entries()) {
+    for (let i = contextLength; i < splittedMsg.length; i++) {
+      const context = [];
+      const sliceStart = i - CONTEXT;
+
+      for (const [j, word] of splittedMsg.slice(sliceStart, i).entries()) {
         context.push(word);
         const key = context.join(' ');
 
         // Adding data to the cache
         const newNode: SuggestionNodeElem = {
-          sugg: splittedMsg[i + j],
+          sugg: splittedMsg[sliceStart + j + 1],
           freq: 1,
         };
         this.suggestionsAdjList.put(key, newNode);
@@ -75,12 +65,35 @@ export class SuggestionsService {
         suggestions.push(newSuggestion);
       }
     }
+    this.logger.debug(`Suggestions: ${JSON.stringify(suggestions)}`);
 
     await Promise.all(suggestions.map((sugg) => this.insertSuggestion(sugg)));
   }
 
-  async findSuggesions(word: string) {
-    return word;
+  async findSuggesions(input: string) {
+    const wordSplitted = input.split(' ');
+    const context = [];
+    const query = async (key: string) =>
+      this.repo.find({
+        select: {
+          key: true,
+          sugg: true,
+        },
+        where: {
+          key,
+        },
+        order: {
+          freq: {
+            direction: 'DESC',
+          },
+        },
+      });
+
+    for (const word of wordSplitted) {
+      context.push(word);
+      const searchKey = context.join(' ');
+      query(searchKey);
+    }
   }
 
   async updateChain(user: string, msg: string) {
@@ -89,5 +102,22 @@ export class SuggestionsService {
       user,
       msg,
     });
+  }
+
+  private async insertSuggestion(suggestion: Suggestion) {
+    const existingSugg = await this.repo.findOneBy({
+      key: suggestion.key,
+      sugg: suggestion.sugg,
+    });
+    if (existingSugg) {
+      suggestion = Object.assign(suggestion, {
+        ...existingSugg,
+        freq: existingSugg.freq + 1,
+      });
+      this.logger.debug(
+        `Updating suggestion ${suggestion.sugg} for ${suggestion.key}. New freq: ${suggestion.freq}`,
+      );
+    }
+    return await this.repo.save(suggestion);
   }
 }

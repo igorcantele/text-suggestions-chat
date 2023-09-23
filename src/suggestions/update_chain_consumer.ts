@@ -6,7 +6,7 @@ import { SuggestionsService } from './suggestions.service';
 
 export interface UpdateChainQueue {
   user: string;
-  message: string;
+  msg: string;
 }
 
 @Processor(UPDATE_CHAIN_QUEUE)
@@ -18,7 +18,7 @@ export class UpdateChainConsumer {
   @Process()
   async updateChainQueue(job: Job<UpdateChainQueue>) {
     this.logger.log(`Updating queue | ${job.id}`);
-    await this.suggestionsService.processMessage(job.data.message);
+    await this.suggestionsService.processMessage(job.data.msg);
     this.logger.log(`Operation completed |  ${job.id}`);
   }
 }

@@ -1,7 +1,10 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, PrimaryColumn } from 'typeorm';
 
 @Entity()
 export class Suggestion {
+  @PrimaryColumn()
+  id?: number;
+
   @Column()
   key: string;
 

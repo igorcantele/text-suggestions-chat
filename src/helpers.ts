@@ -53,7 +53,7 @@ export class LRUCache<T> {
   }
 
   put(key: string, value: T) {
-    const prevVals = this.cache[key].val;
+    const prevVals = this.cache[key]?.val;
     const [newValue, counterIncrement] = Array.isArray(prevVals)
       ? this.appendStrategy(prevVals, value)
       : [value, 1];
