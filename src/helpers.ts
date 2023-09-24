@@ -49,7 +49,7 @@ export class LRUCache<T> {
       this.removeNode(this.cache[key]);
       this.insertNode(this.cache[key]);
     }
-    return this.cache[key];
+    return this.cache[key].val as ReturnType<typeof this.appendStrategy>[0];
   }
 
   put(key: string, value: T) {

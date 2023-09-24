@@ -13,6 +13,7 @@ import { Repository } from 'typeorm';
 
 const CACHE_SIZE = 15000;
 const CONTEXT = 4;
+const LIMIT_SUGGESTIONS = 3;
 
 @Injectable()
 export class SuggestionsService {
@@ -38,7 +39,7 @@ export class SuggestionsService {
    */
   async processMessage(msg: string) {
     this.logger.debug(`Processing message: ${msg}`);
-    const splittedMsg = msg.split(' ');
+    const splittedMsg = msg.toLowerCase().split(' ');
     const suggestions: Suggestion[] = [];
     const contextLength = Math.min(CONTEXT, splittedMsg.length - 1);
 
@@ -71,12 +72,11 @@ export class SuggestionsService {
   }
 
   async findSuggesions(input: string) {
-    const wordSplitted = input.split(' ');
+    const wordSplitted = input.toLowerCase().split(' ');
     const context = [];
     const query = async (key: string) =>
       this.repo.find({
         select: {
-          key: true,
           sugg: true,
         },
         where: {
@@ -89,11 +89,31 @@ export class SuggestionsService {
         },
       });
 
+    let suggestions = [];
     for (const word of wordSplitted) {
+      if (suggestions.length > LIMIT_SUGGESTIONS) break;
       context.push(word);
       const searchKey = context.join(' ');
-      query(searchKey);
+      this.logger.debug(`search key: ${searchKey}`);
+      const inCache = this.suggestionsAdjList
+        .get(searchKey)
+        .map((suggestion) => suggestion.sugg);
+
+      this.logger.debug(`FOUND IN CACHE: ${JSON.stringify(inCache)}`);
+      if (!inCache) {
+        const suggs = await query(searchKey);
+        this.logger.debug(`FOUND IN DB: ${JSON.stringify(suggs)}`);
+        if (suggs)
+          suggestions = [
+            ...suggestions,
+            ...suggs.map((suggestion) => suggestion.sugg),
+          ];
+        continue;
+      }
+      suggestions = [...suggestions, ...inCache];
     }
+
+    return suggestions;
   }
 
   async updateChain(user: string, msg: string) {
