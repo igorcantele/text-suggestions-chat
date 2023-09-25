@@ -9,7 +9,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { LRUCache } from '../helpers';
 import { Suggestion } from './entities/suggestion.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, UpdateResult } from 'typeorm';
 
 const CACHE_SIZE = 15000;
 const CONTEXT = 4;
@@ -21,6 +21,7 @@ export class SuggestionsService {
   private readonly suggestionsAdjList = new LRUCache<SuggestionNodeElem>(
     CACHE_SIZE,
     insertInCacheFn,
+    true,
   );
 
   constructor(
@@ -29,43 +30,75 @@ export class SuggestionsService {
   ) {}
 
   /*
-   * This function saves data with a context and progressively reducing it.
+   * This function saves data with a context and progressively incresing it.
    * e.g.
    * "Hello I need context"
    * will save the following key-value suggestions:
    *  Hello -> I
    *  Hello I -> need
+   *  I -> need
    *  Hello I need -> context
+   *  I need -> context
+   *  need -> context
+   *
+   * TODO: Implement `like` query by adding in the cache the work character by character.
+   *  e.g.
+   * "Hello I need context"
+   * H -> I
+   * He -> I
+   * Hel -> I
+   * Hell -> I
+   * Hello -> I
+   * ...
+   *
    */
   async processMessage(msg: string) {
     this.logger.debug(`Processing message: ${msg}`);
     const splittedMsg = msg.toLowerCase().split(' ');
     const suggestions: Suggestion[] = [];
-    const contextLength = Math.min(CONTEXT, splittedMsg.length - 1);
+    const visited = {};
 
-    for (let i = contextLength; i < splittedMsg.length; i++) {
-      const context = [];
-      const sliceStart = i - CONTEXT;
+    /*
+     * Given context add element to the cache and to the suggestions list
+     */
+    const processContext = (context: string[], sugg: string) => {
+      const key = context.join(' ');
+      // Adding data to the cache
+      const newNode: SuggestionNodeElem = {
+        sugg,
+        freq: 1,
+      };
+      this.suggestionsAdjList.put(key, newNode);
 
-      for (const [j, word] of splittedMsg.slice(sliceStart, i).entries()) {
-        context.push(word);
-        const key = context.join(' ');
-
-        // Adding data to the cache
-        const newNode: SuggestionNodeElem = {
-          sugg: splittedMsg[sliceStart + j + 1],
-          freq: 1,
-        };
-        this.suggestionsAdjList.put(key, newNode);
-
-        // Pushing data to be inserted in db
-        const newSuggestion = Object.assign(new Suggestion(), {
-          key,
-          ...newNode,
-        });
-        suggestions.push(newSuggestion);
-      }
-    }
+      // Pushing data to be inserted in db
+      const newSuggestion = Object.assign(new Suggestion(), {
+        key,
+        ...newNode,
+      });
+      suggestions.push(newSuggestion);
+    };
+    /*
+     * Rercursively process all contexts in the message
+     */
+    const processSubMsg = (
+      i: number,
+      ctx: string[],
+      visited: Record<string, string>,
+    ) => {
+      ctx.push(splittedMsg[i - 1]);
+      ctx =
+        ctx.length > CONTEXT
+          ? ctx.slice(ctx.length - CONTEXT, ctx.length)
+          : ctx;
+      if (i >= splittedMsg.length || ctx.join(' ') in visited) return;
+      const sugg = splittedMsg[i];
+      processContext(ctx, sugg);
+      visited[ctx.join(' ')] = sugg;
+      processSubMsg(i + 1, [], visited);
+      processSubMsg(i + 1, ctx, visited);
+      ctx.pop();
+    };
+    processSubMsg(1, [], visited);
     this.logger.debug(`Suggestions: ${JSON.stringify(suggestions)}`);
 
     await Promise.all(suggestions.map((sugg) => this.insertSuggestion(sugg)));
@@ -80,6 +113,7 @@ export class SuggestionsService {
           sugg: true,
         },
         where: {
+          // TODO: Implement `like` query
           key,
         },
         order: {
@@ -89,7 +123,7 @@ export class SuggestionsService {
         },
       });
 
-    let suggestions = [];
+    let suggestions: string[] = [];
     for (const word of wordSplitted) {
       if (suggestions.length > LIMIT_SUGGESTIONS) break;
       context.push(word);
@@ -97,7 +131,7 @@ export class SuggestionsService {
       this.logger.debug(`search key: ${searchKey}`);
       const inCache = this.suggestionsAdjList
         .get(searchKey)
-        .map((suggestion) => suggestion.sugg);
+        ?.map((suggestion) => suggestion.sugg);
 
       this.logger.debug(`FOUND IN CACHE: ${JSON.stringify(inCache)}`);
       if (!inCache) {
@@ -125,19 +159,24 @@ export class SuggestionsService {
   }
 
   private async insertSuggestion(suggestion: Suggestion) {
-    const existingSugg = await this.repo.findOneBy({
-      key: suggestion.key,
-      sugg: suggestion.sugg,
-    });
-    if (existingSugg) {
-      suggestion = Object.assign(suggestion, {
-        ...existingSugg,
-        freq: existingSugg.freq + 1,
-      });
+    const updated: UpdateResult = await this.repo
+      .createQueryBuilder("Update Suggestion's frequency")
+      .update(Suggestion)
+      .where({
+        key: suggestion.key,
+        sugg: suggestion.sugg,
+      })
+      .set({ freq: () => 'freq + 1' })
+      .execute();
+    this.logger.debug(JSON.stringify(updated));
+    if (updated.affected == 0) {
       this.logger.debug(
-        `Updating suggestion ${suggestion.sugg} for ${suggestion.key}. New freq: ${suggestion.freq}`,
+        `Saving suggestion ${suggestion.sugg} for ${suggestion.key}.`,
       );
+      return await this.repo.save(suggestion);
     }
-    return await this.repo.save(suggestion);
+    this.logger.debug(
+      `Updating suggestion ${suggestion.sugg} for ${suggestion.key}.`,
+    );
   }
 }
