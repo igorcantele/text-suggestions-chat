@@ -37,6 +37,7 @@ export class LRUCache<T> {
   constructor(
     private readonly capacity: number,
     appendStrategy?: (prevVals: T[], newVal: T) => [T[], number],
+    private readonly allowMultipleValues: boolean = false,
   ) {
     this.left.next = this.right;
     this.right.prev = this.left;
@@ -49,14 +50,15 @@ export class LRUCache<T> {
       this.removeNode(this.cache[key]);
       this.insertNode(this.cache[key]);
     }
-    return this.cache[key].val as ReturnType<typeof this.appendStrategy>[0];
+    return this.cache[key]?.val as ReturnType<typeof this.appendStrategy>[0];
   }
 
   put(key: string, value: T) {
-    const prevVals = this.cache[key]?.val;
-    const [newValue, counterIncrement] = Array.isArray(prevVals)
-      ? this.appendStrategy(prevVals, value)
-      : [value, 1];
+    const prevVals = this.cache[key]?.val ?? [];
+    const [newValue, counterIncrement] =
+      this.allowMultipleValues && Array.isArray(prevVals)
+        ? this.appendStrategy(prevVals, value)
+        : [value, 1];
 
     const node = new Node<T>(key, newValue);
     this.cache[key] = node;
